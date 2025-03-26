@@ -3,11 +3,10 @@ import pygame
 import json
 import requests
 from io import BytesIO
+from typing import List, Dict, Optional, Any
+from pygame.locals import QUIT, MOUSEBUTTONDOWN
 from tkinter import *
 from tkinter import messagebox, simpledialog
-from pygame.locals import QUIT, MOUSEBUTTONDOWN
-from typing import List, Dict, Optional, Any
-
 
 # Initialize Pygame
 pygame.init()
@@ -27,6 +26,10 @@ lose_sound = pygame.mixer.Sound('lose_sound.wav.mp3')
 # Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+
+# Global music variables
+background_music_enabled = True
+music_volume = 1.0  # Default volume (maximum volume)
 
 
 # Function to fetch Pokémon data
@@ -77,80 +80,78 @@ def update_high_scores(player_name: str, wins: int):
         json.dump(high_scores, file)
 
 
-# GUI functions using Tkinter
+# Main Game Class
 class PokemonGame:
     def __init__(self, root):
         self.root = root
         self.root.title("Pokémon Showdown")
+        self.root.geometry(f"{SCREEN_WIDTH}x{SCREEN_HEIGHT}")
         
-        # Set default setting for music
-        self.background_music_enabled = True
-        self.music_volume = 1.0  # Default volume (maximum volume)
-
         self.player_name = ""
         self.wins = 0
         self.losses = 0
         self.ties = 0
 
-        self.start_screen()
+        # Start the game
+        self.start_game()
 
-    def start_screen(self):
+    def start_game(self):
         # Clear the screen
         self.clear_screen()
 
-        # Display entry form for the player's name
+        # Create buttons and labels on the game screen
         Label(self.root, text="Enter your name:", font=('Arial', 14)).pack(pady=10)
         self.name_entry = Entry(self.root, font=('Arial', 14))
         self.name_entry.pack(pady=10)
         
-        Button(self.root, text="Start Game", font=('Arial', 14), command=self.start_game).pack(pady=20)
+        Button(self.root, text="Start Game", font=('Arial', 14), command=self.play_game).pack(pady=20)
 
-        # Settings button
-        Button(self.root, text="Settings", font=('Arial', 14), command=self.settings_screen).pack(pady=10)
+        # Settings Button on the Main Screen
+        Button(self.root, text="Settings", font=('Arial', 14), command=self.open_settings).pack(pady=10)
 
-    def settings_screen(self):
-        # Clear the screen for the settings menu
-        self.clear_screen()
+    def open_settings(self):
+        # Create the settings window
+        settings_window = Toplevel(self.root)
+        settings_window.title("Settings")
+        settings_window.geometry("400x300")
 
-        # Background music setting
-        music_choice = "Stop Music During Result" if self.background_music_enabled else "Play Music During Result"
-        Label(self.root, text="Settings", font=('Arial', 18)).pack(pady=10)
-        Label(self.root, text="Background Music:", font=('Arial', 14)).pack(pady=10)
-        Button(self.root, text=music_choice, font=('Arial', 14), command=self.toggle_music).pack(pady=10)
+        # Toggle Music Button
+        self.toggle_music_button = Button(settings_window, text="Toggle Music", font=('Arial', 14), command=self.toggle_music)
+        self.toggle_music_button.pack(pady=10)
+
+        # Volume Controls
+        self.volume_label = Label(settings_window, text=f"Volume: {int(music_volume * 100)}%", font=('Arial', 14))
+        self.volume_label.pack(pady=10)
         
-        # Volume control buttons
-        Label(self.root, text="Adjust Volume:", font=('Arial', 14)).pack(pady=10)
-        Button(self.root, text="Decrease Volume", font=('Arial', 14), command=self.decrease_volume).pack(pady=5)
-        Button(self.root, text="Increase Volume", font=('Arial', 14), command=self.increase_volume).pack(pady=5)
+        Button(settings_window, text="Increase Volume", font=('Arial', 14), command=self.increase_volume).pack(pady=5)
+        Button(settings_window, text="Decrease Volume", font=('Arial', 14), command=self.decrease_volume).pack(pady=5)
 
-        Button(self.root, text="Back to Game", font=('Arial', 14), command=self.start_screen).pack(pady=10)
+        # Close Button for Settings
+        Button(settings_window, text="Close", font=('Arial', 14), command=settings_window.destroy).pack(pady=20)
 
     def toggle_music(self):
-        # Toggle background music on/off during result
-        self.background_music_enabled = not self.background_music_enabled
-        self.settings_screen()  # Refresh the settings screen with updated choice
-
-    def decrease_volume(self):
-        # Decrease the music volume (but not below 0.0)
-        if self.music_volume > 0.0:
-            self.music_volume -= 0.1
-            pygame.mixer.music.set_volume(self.music_volume)
-            self.settings_screen()  # Refresh the settings screen with updated volume
+        global background_music_enabled
+        background_music_enabled = not background_music_enabled
+        if background_music_enabled:
+            pygame.mixer.music.play(-1, 0.0)  # Start music if enabled
+            self.toggle_music_button.config(text="Stop Music")  # Update button text
+        else:
+            pygame.mixer.music.stop()  # Stop music if disabled
+            self.toggle_music_button.config(text="Play Music")  # Update button text
 
     def increase_volume(self):
-        # Increase the music volume (but not above 1.0)
-        if self.music_volume < 1.0:
-            self.music_volume += 0.1
-            pygame.mixer.music.set_volume(self.music_volume)
-            self.settings_screen()  # Refresh the settings screen with updated volume
+        global music_volume
+        if music_volume < 1.0:
+            music_volume += 0.1
+            pygame.mixer.music.set_volume(music_volume)
+            self.volume_label.config(text=f"Volume: {int(music_volume * 100)}%")  # Update volume label
 
-    def start_game(self):
-        self.player_name = self.name_entry.get().capitalize()
-        if not self.player_name:
-            messagebox.showwarning("Input Error", "Please enter a valid name.")
-            return
-        
-        self.play_game()
+    def decrease_volume(self):
+        global music_volume
+        if music_volume > 0.0:
+            music_volume -= 0.1
+            pygame.mixer.music.set_volume(music_volume)
+            self.volume_label.config(text=f"Volume: {int(music_volume * 100)}%")  # Update volume label
 
     def play_game(self):
         # Clear the screen for the game
@@ -212,14 +213,14 @@ class PokemonGame:
             self.ties += 1
 
         # Stop music before showing result
-        if self.background_music_enabled:
+        if background_music_enabled:
             pygame.mixer.music.stop()  # Stop the background music during result display
         
         # Show the result (win/lose/tie)
         messagebox.showinfo("Result", result)
 
         # Restart music after result
-        if self.background_music_enabled:
+        if background_music_enabled:
             pygame.mixer.music.play(-1, 0.0)  # Start playing the background music again
 
         update_high_scores(self.player_name, self.wins)
@@ -232,6 +233,10 @@ class PokemonGame:
             self.show_summary()
 
     def show_summary(self):
+        # Stop music when player doesn't want to play again
+        if background_music_enabled:
+            pygame.mixer.music.stop()  # Stop the music when game ends
+
         self.clear_screen()
         summary_text = f"Game Over\nWins: {self.wins}\nLosses: {self.losses}\nTies: {self.ties}"
         Label(self.root, text=summary_text, font=('Arial', 14)).pack(pady=20)
