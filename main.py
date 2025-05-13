@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Any
 from pygame.locals import QUIT, MOUSEBUTTONDOWN
 from tkinter import *
 from tkinter import messagebox, simpledialog
+from tkinter.ttk import Progressbar
 
 # Initialize Pygame
 pygame.init()
@@ -17,11 +18,13 @@ SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Pokémon Showdown")
 
-# Load sounds
+# Load media
 pygame.mixer.music.load('background_music.mp3')
 pygame.mixer.music.play(-1)  # Loop background music
 win_sound = pygame.mixer.Sound('win_sound.wav.mp3')
 lose_sound = pygame.mixer.Sound('lose_sound.wav.mp3')
+battle_background = pygame.image.load("battle_background.png")
+battle_background = pygame.transform.scale(battle_background, (SCREEN_WIDTH, SCREEN_HEIGHT))
 
 # Colors
 WHITE = (255, 255, 255)
@@ -31,9 +34,20 @@ BLACK = (0, 0, 0)
 background_music_enabled = True
 music_volume = 1.0  # Default volume (maximum volume)
 
+# Global difficulty setting (default = Medium)
+difficulty_level = 'medium'
+
+# Function to apply difficulty multiplier to opponent stats
+def apply_difficulty(stats: Dict[str, int], level: str) -> Dict[str, int]:
+    multiplier = {
+        'easy': 0.8,
+        'medium': 1.0,
+        'hard': 1.2
+    }.get(level, 1.0)
+    return {k: int(v * multiplier) for k, v in stats.items()}
 
 # Function to fetch Pokémon data
-def get_pokemon_data(pokemon_id: int) -> Optional[Dict[str, Any]]:
+def get_pokemon_data(pokemon_id: int, adjust_stats=False) -> Optional[Dict[str, Any]]:
     url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_id}"
     response = requests.get(url)
     try:
@@ -41,16 +55,28 @@ def get_pokemon_data(pokemon_id: int) -> Optional[Dict[str, Any]]:
     except requests.exceptions.RequestException as e:
         print(f"Error fetching Pokémon data: {e}")
         return None
+    stats = {stat["stat"]["name"]: stat["base_stat"] for stat in pokemon["stats"]}
+    if adjust_stats:
+        stats = apply_difficulty(stats, difficulty_level)
 
     return {
         "name": pokemon["name"],
         "id": pokemon["id"],
         "height": pokemon["height"],
         "weight": pokemon.get("weight"),
-        "stats": {stat["stat"]["name"]: stat["base_stat"] for stat in pokemon["stats"]},
+        "stats": stats,
         "sprite": f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{pokemon['id']}.png"
     }
 
+# Flash animation (winner highlight)
+def flash_winner(screen, color=(0, 255, 0), times=3):
+    for _ in range(times):
+        screen.fill(color)
+        pygame.display.update()
+        pygame.time.delay(200)
+        screen.fill((255, 255, 255))
+        pygame.display.update()
+        pygame.time.delay(200)
 
 # Function to load Pokémon images
 def load_pokemon_image(url: str) -> Optional[pygame.Surface]:
@@ -78,7 +104,6 @@ def update_high_scores(player_name: str, wins: int):
 
     with open("high_scores.json", "w") as file:
         json.dump(high_scores, file)
-
 
 # Main Game Class
 class PokemonGame:
@@ -108,6 +133,9 @@ class PokemonGame:
 
         # Settings Button on the Main Screen
         Button(self.root, text="Settings", font=('Arial', 14), command=self.open_settings).pack(pady=10)
+
+        # Leaderboard Button
+        Button(self.root, text="High Scores", font=('Arial', 14), command=self.show_high_scores).pack(pady=10)
 
     def open_settings(self):
         # Create the settings window
@@ -153,6 +181,17 @@ class PokemonGame:
             pygame.mixer.music.set_volume(music_volume)
             self.volume_label.config(text=f"Volume: {int(music_volume * 100)}%")  # Update volume label
 
+    # Function to show high scores
+    def show_high_scores(self):
+        try:
+          with open("high_scores.json", "r") as f:
+            scores = json.load(f)
+            top_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:5]
+            message = "\n".join([f"{name}: {score}" for name, score in top_scores])
+            messagebox.showinfo("High Scores", message)
+        except FileNotFoundError:
+            messagebox.showinfo("High Scores", "No high scores yet!")
+
     def play_game(self):
         # Clear the screen for the game
         self.clear_screen()
@@ -191,6 +230,14 @@ class PokemonGame:
 
         if stat_choice:
             self.show_opponent(player_pokemon, stat_choice.lower())
+
+    def show_stat_bar(frame, stat_name, value):
+        Label(frame, text=stat_name, font=('Arial', 10)).pack()
+        bar = Progressbar(frame, orient=HORIZONTAL, length=120, mode='determinate')
+        bar['value'] = value
+        bar['maximum'] = 200  # Adjust max if needed
+        bar.pack(pady=2)
+
 
     def show_opponent(self, player_pokemon, stat_choice):
         opponent_pokemon = get_pokemon_data(random.randint(1, 151))
